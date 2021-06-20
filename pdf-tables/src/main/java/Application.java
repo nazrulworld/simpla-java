@@ -18,7 +18,6 @@ public class Application {
 	private final static Path INPUT_DIR =
 			FileSystems.getDefault().getPath(
 					".", "pdf-tables", "src", "main", "resources");
-
 	public static void main(String[] args) throws IOException, DocumentException {
 		Path jsonFilePath = Paths.get(INPUT_DIR.toString(), "resource.json");
 		byte[] jsonData = Files.readAllBytes(jsonFilePath);
@@ -57,3 +56,13 @@ public class Application {
 }
 // https://www.baeldung.com/java-pdf-creation
 // https://www.journaldev.com/2324/jackson-json-java-parser-api-example-tutorial
+// table.setFixedPosition(ps.getWidth() - doc.getRightMargin() - totalWidth, ps.getHeight() - doc.getTopMargin() - totalHeight, totalWidth);
+// PageSize ps = pdfDoc.getDefaultPageSize();
+//	IRenderer tableRenderer = table.createRendererSubTree().setParent(doc.getRenderer());
+//	LayoutResult tableLayoutResult =
+//			tableRenderer.layout(new LayoutContext(new LayoutArea(0, new Rectangle(ps.getWidth(), 1000))));
+//	float totalHeight = tableLayoutResult.getOccupiedArea().getBBox().getHeight();
+//
+//PdfContentByte canvas = writer.getDirectContent();
+//table.writeSelectedRows(0, -1, document.right() - tablewidth, document.top(), canvas);
+// https://kb.itextpdf.com/home/it7kb/faq/how-do-i-insert-a-hyperlink-to-another-page-in-an-existing-pdf

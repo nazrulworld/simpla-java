@@ -4,6 +4,7 @@ import com.itextpdf.text.pdf.*;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -13,45 +14,73 @@ import java.util.regex.Pattern;
 public class PdfGenerator {
 	private final Path outputDir;
 	private final Logger LOGGER = Logger.getLogger(PdfGenerator.class.getName());
-	private final Font headerFont;
-	private final Font cellFont;
-	private final Font cellFontBold;
-	private final Pattern bTagPattern;
+	private final static Path RESOURCE_DIR =
+			FileSystems.getDefault().getPath(
+					".", "pdf-tables", "src", "main", "resources");
+	private  final BaseFont BASE_FONT;
+	private final Font HEADER_FONT;
+	private final Font CELL_FONT;
+	private final Font CELL_FONT_BOLD;
+	private final Pattern B_TAG_PATTERN;
+	private final float TABLE_MARGIN_TOP;
 
-	public PdfGenerator(Path outputDir) {
-		this.outputDir = outputDir;
-		headerFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 14);
-		cellFont = FontFactory.getFont(FontFactory.HELVETICA, 12);
-		cellFontBold = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12);
-		bTagPattern = Pattern.compile("<b>(.*?)</b>");
+	public PdfGenerator(Path outputDir) throws IOException, DocumentException {
+		this(outputDir, 50.0F);
 	}
-	private void generateDoc(String fileName, Rectangle docSize, int perPage, ArrayList<ArrayList<String>> items) throws FileNotFoundException, DocumentException {
-		LOGGER.info("Start logging");
+
+	public PdfGenerator(Path outputDir, float table_margin_top) throws IOException, DocumentException {
+		BASE_FONT = BaseFont.createFont(
+				Paths.get(
+						RESOURCE_DIR.toAbsolutePath().toString(),
+						"arial-unicode-ms.ttf").toString(),
+				BaseFont.IDENTITY_H,
+				BaseFont.EMBEDDED);
+		HEADER_FONT = new Font(BASE_FONT, 14, Font.BOLD);
+		CELL_FONT = new Font(BASE_FONT, 12);
+		CELL_FONT_BOLD = new Font(BASE_FONT, 12, Font.BOLD);
+		B_TAG_PATTERN = Pattern.compile("<b>(.*?)</b>");
+		TABLE_MARGIN_TOP = table_margin_top;
+		this.outputDir = outputDir;
+	}
+
+	private void generateDoc(String fileName, String pageTitle, Rectangle docSize, int perPage, ArrayList<ArrayList<String>> items) throws FileNotFoundException, DocumentException {
+
 		Document document = new Document(docSize);
+		document.addTitle(pageTitle);
+		document.addCreator("https://github.com/nazrulworld/simpla-java/tree/main/pdf-tables");
 		String filePathName = Paths.get(this.outputDir.toString(), fileName)
 				.normalize().toAbsolutePath().toString();
 		PdfWriter writer = PdfWriter.getInstance(document, new FileOutputStream(filePathName));
-		writer.setPageEvent(new PageHeaderFooter("My Page Title"));
+		writer.setPageEvent(new PageHeaderFooter(pageTitle, BASE_FONT));
 		document.open();
 		ArrayList<String> headColumns = items.get(0);
 		PdfPTable pdfPTable = new PdfPTable(headColumns.size());
 		addTableHeader(pdfPTable, headColumns);
+		boolean tableIsOpen = true;
 		for (int i=1; items.size() > i; i++){
 			addRow(pdfPTable, items.get(i));
 			if (i % perPage == 0){
-				document.add(pdfPTable);
+				addTable(pdfPTable, document, writer);
+				if (i==items.size()-1){
+					// this is last
+					tableIsOpen = false;
+					break;
+				}
 				document.newPage();
 				pdfPTable = new PdfPTable(headColumns.size());
 				addTableHeader(pdfPTable, headColumns);
 			}
+		}
+		if (tableIsOpen){
+			addTable(pdfPTable, document, writer);
 		}
 		document.close();
 
 	}
 	private Phrase buildCellPhrase(String rawString){
 		// We assume <b> is inside String
-		if (!bTagPattern.matcher(rawString).find()){
-			return new Phrase(rawString, cellFont);
+		if (!B_TAG_PATTERN.matcher(rawString).find()){
+			return new Phrase(rawString, CELL_FONT);
 		}
 		rawString = rawString.replace("<b>", "~|").replace("</b>", "|~");
 		Phrase phrase = new Phrase();
@@ -62,10 +91,10 @@ public class PdfGenerator {
 
 			if (part.startsWith("|") && part.endsWith("|")){
 
-				phrase.add(new Chunk(part.substring(1, (part.length() - 1)), cellFontBold));
+				phrase.add(new Chunk(part.substring(1, (part.length() - 1)), CELL_FONT_BOLD));
 			}
 			else {
-				phrase.add(new Chunk(part, cellFont));
+				phrase.add(new Chunk(part, CELL_FONT));
 			}
 		}
 		return phrase;
@@ -82,6 +111,16 @@ public class PdfGenerator {
 		}
 	}
 
+	private void addTable(PdfPTable table, Document document, PdfWriter writer){
+		table.setTotalWidth(document.right() - document.left());
+		table.writeSelectedRows(
+				0, -1,
+				document.right() - table.getTotalWidth(),
+				document.top() - (TABLE_MARGIN_TOP + table.getPaddingTop()),
+				writer.getDirectContent()
+		);
+	}
+
 	private void addTableHeader(PdfPTable pdfPTable, ArrayList<String> columns){
 		for (String colTitle : columns){
 			PdfPCell headCell = new PdfPCell();
@@ -91,90 +130,84 @@ public class PdfGenerator {
 			headCell.setBorderWidth(0.15F);
 			headCell.setBorderColor(BaseColor.GRAY);
 			headCell.setBackgroundColor(BaseColor.LIGHT_GRAY);
-			headCell.setPhrase(new Phrase(colTitle, headerFont));
+			headCell.setPhrase(new Phrase(colTitle, HEADER_FONT));
 			pdfPTable.addCell(headCell);
 		}
 	}
 	public static void generate(DataResource dataResource, Path outputDir){
-		PdfGenerator obj = new PdfGenerator(outputDir);
 		try {
-			obj.generateDoc("Adjektiver.pdf", PageSize.A4.rotate() , 20, dataResource.getAdjektiverList());
-			obj.generateDoc("Substantiver.pdf", PageSize.A4.rotate(), 20, dataResource.getSubstantiverList());
-			obj.generateDoc("Verber.pdf", PageSize.A4.rotate(), 20, dataResource.getVerberList());
-		} catch (FileNotFoundException | DocumentException exc){
+			PdfGenerator obj = new PdfGenerator(outputDir);
+			obj.generateDoc("Adjektiver.pdf", "Det er meste brugte adjektiver",PageSize.A4.rotate() , 20, dataResource.getAdjektiverList());
+			obj.generateDoc("Substantiver.pdf", "Det er meste brugte substantiver", PageSize.A4.rotate(), 20, dataResource.getSubstantiverList());
+			obj.generateDoc("Verber.pdf", "Det er meste brugte verber" ,PageSize.A4.rotate(), 20, dataResource.getVerberList());
+		} catch (DocumentException | IOException exc){
 			exc.printStackTrace();
 		}
 	}
 }
 
 class PageHeaderFooter extends PdfPageEventHelper {
-	private  BaseFont headerFont;
-	private  BaseFont footerFont;
+
+	private final BaseFont BASE_FONT;
 	private final String pageTitle;
 
-	public PageHeaderFooter(String pageTitle){
-		this(pageTitle, FontFactory.HELVETICA, FontFactory.HELVETICA);
-	}
-	public PageHeaderFooter(String pageTitle, String headerFontName){
-		this(pageTitle, headerFontName, headerFontName);
+	public PageHeaderFooter(String pageTitle, BaseFont baseFont){
+		this.pageTitle = pageTitle;
+		BASE_FONT = baseFont;
 	}
 
-	public PageHeaderFooter(String pageTitle, String headerFontName, String footerFontName){
-		this.pageTitle = pageTitle;
-		try
-		{
-			this.headerFont = BaseFont.createFont(headerFontName, BaseFont.WINANSI, false);
-			this.footerFont = BaseFont.createFont(footerFontName, BaseFont.WINANSI, false);
-		}
-		catch (DocumentException | IOException e)
-		{
-			e.printStackTrace();
-		}
+	private void drawHeader(PdfWriter writer, Document document){
+		PdfPTable table = new PdfPTable(1);
+		// write the header table
+		PdfPCell cell = new PdfPCell(new Phrase(pageTitle, new Font(BASE_FONT, 16, Font.BOLD)));
+		cell.setBorder(0);
+		table.addCell(cell);
+		table.setTotalWidth(document.right() - document.left());
+		table.writeSelectedRows(
+				0,
+				-1,
+				document.left(),
+				document.top(),
+				writer.getDirectContent()
+		);
+	}
+
+	private void drawFooter(PdfWriter writer, Document document){
+
+		PdfTemplate tplPageCounter = writer.getDirectContent().createTemplate(100, 100);
+
+		PdfContentByte cb = writer.getDirectContent();
+		float textBase = document.bottom() - 5;
+		float adjust = BASE_FONT.getWidthPoint("0", 12);
+
+		// compose page number inside the footer
+		String text = "Page " + writer.getPageNumber();
+		float textSize = BASE_FONT.getWidthPoint(text, 12);
+		cb.beginText();
+		cb.setFontAndSize(BASE_FONT, 12);
+		cb.setTextMatrix(document.right() - textSize - adjust, textBase);
+		cb.showText(text);
+		cb.endText();
+		cb.addTemplate(tplPageCounter, document.right() - adjust, textBase);
+
+		// compose gitlab link
+		String link = "https://github.com/nazrulworld/simpla-java/tree/main/pdf-tables";
+		textSize = BASE_FONT.getWidthPoint(link, 12);
+		PdfTemplate tplSourceLink = writer.getDirectContent().createTemplate(textSize, 100);
+		cb.beginText();
+		cb.setFontAndSize(BASE_FONT, 12);
+		cb.setColorFill(BaseColor.GRAY);
+		cb.setTextMatrix(document.left(), textBase);
+		cb.showText(link);
+		cb.endText();
+		cb.addTemplate(tplSourceLink, document.left(), textBase);
 	}
 
 	@Override
 	public void onEndPage(PdfWriter writer, Document document) {
 		// https://www.codota.com/web/assistant/code/rs/5c695cbd49efcb000177ba7e#L55
-		/** The headertable. */
-		PdfPTable table = new PdfPTable(1);
-		/** A template that will hold the total number of pages. */
-		PdfTemplate tpl = writer.getDirectContent().createTemplate(100, 100);
-		/** The font that will be used. */
-
-		PdfContentByte cb = writer.getDirectContent();
-		// write the header table
-		PdfPCell cell = new PdfPCell(new Phrase(pageTitle));
-		cell.setBorder(0);
-		table.addCell(cell);
-		table.setTotalWidth(document.right() - document.left());
-		table.writeSelectedRows(0, -1, document.left() + 76, document.getPageSize().getHeight() - 10, cb);
-		// compose the footer
-		String text = "Page " + writer.getPageNumber();
-		assert footerFont != null;
-		float textSize = footerFont.getWidthPoint(text, 12);
-
-		float textBase = document.bottom() - 20;
-		cb.beginText();
-		cb.setFontAndSize(footerFont, 12);
-		float adjust = footerFont.getWidthPoint("0", 12);
-		cb.setTextMatrix(document.right() - textSize - adjust, textBase);
-		cb.showText(text);
-		cb.endText();
-		cb.addTemplate(tpl, document.right() - adjust, textBase);
-	}
-
-	/**
-	 * Fills out the total number of pages before the document is closed.
-	 * @see com.itextpdf.text.pdf.PdfPageEventHelper#onCloseDocument(
-	 *      com.itextpdf.text.pdf.PdfWriter, com.itextpdf.text.Document)
-	 */
-	public void onCloseDocument(PdfWriter writer, Document document) {
-		/*
-		ColumnText.showTextAligned(total, Element.ALIGN_LEFT,
-				new Phrase(String.valueOf(writer.getPageNumber() - 1), normal),
-				2, 2, 0);
-
-		 */
+		drawHeader(writer, document);
+		drawFooter(writer, document);
 	}
 
 }
