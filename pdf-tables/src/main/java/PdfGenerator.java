@@ -137,9 +137,9 @@ public class PdfGenerator {
 	public static void generate(DataResource dataResource, Path outputDir){
 		try {
 			PdfGenerator obj = new PdfGenerator(outputDir);
-			obj.generateDoc("Adjektiver.pdf", "Det er meste brugte adjektiver",PageSize.A4.rotate() , 20, dataResource.getAdjektiverList());
-			obj.generateDoc("Substantiver.pdf", "Det er meste brugte substantiver", PageSize.A4.rotate(), 20, dataResource.getSubstantiverList());
-			obj.generateDoc("Verber.pdf", "Det er meste brugte verber" ,PageSize.A4.rotate(), 20, dataResource.getVerberList());
+			obj.generateDoc("Adjektiver.pdf", String.format("De %s almindeligste adjektiver", dataResource.getAdjektiverList().size() -1),PageSize.A4.rotate() , 20, dataResource.getAdjektiverList());
+			obj.generateDoc("Substantiver.pdf", String.format("De %s almindeligste substantiver", dataResource.getSubstantiverList().size() -1), PageSize.A4.rotate(), 20, dataResource.getSubstantiverList());
+			obj.generateDoc("Verber.pdf", String.format("De %s almindeligste verber (udsagnsord)", dataResource.getVerberList().size() -1) ,PageSize.A4.rotate(), 20, dataResource.getVerberList());
 		} catch (DocumentException | IOException exc){
 			exc.printStackTrace();
 		}
